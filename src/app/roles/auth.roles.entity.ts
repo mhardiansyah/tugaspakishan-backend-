@@ -1,5 +1,5 @@
 import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
-import { UserRole } from './auth.userRole.entity';
+import { UserRole } from '../auth/auth.userRole.entity';
 
 @Entity('roles')
 export class Role extends BaseEntity {

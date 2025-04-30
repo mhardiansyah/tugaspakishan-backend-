@@ -10,6 +10,14 @@ class baseResponse{
         }
     }
 
+    _error (message: string, data?: any): Responsesuccess {
+        return {
+            status: "error",
+            message: message,
+            data: data || {},
+        }
+    }
+
 
 
   

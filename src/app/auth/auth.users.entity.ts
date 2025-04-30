@@ -10,7 +10,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { UserRole } from './auth.userRole.entity';
-import { Role } from './auth.roles.entity';
+import { Role } from '../roles/auth.roles.entity';
 @Entity('users')
 export class User extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -43,7 +43,7 @@ export class User extends BaseEntity {
   @Column({ nullable: true, length: 512 })
   refresh_token: string;
 
-  @ManyToOne(() => Role, (role) => role.users)
+  @ManyToOne(() => Role, (role) => role.users, { eager: true })
   @JoinColumn({ name: 'role_id' }) // mapping ke kolom role_id
   role: Role;
 

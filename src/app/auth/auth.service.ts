@@ -1,7 +1,9 @@
 /* eslint-disable prettier/prettier */
 import {
+  ForbiddenException,
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -17,7 +19,8 @@ import { Responsesuccess } from '../interface';
 import { LoginDto, UserDto } from './auth.user.dto';
 import { compare, hash } from 'bcrypt';
 import { use } from 'passport';
-import { Role } from './auth.roles.entity';
+import { Role } from '../roles/auth.roles.entity';
+import { REQUEST } from '@nestjs/core';
 
 @Injectable()
 export class AuthService extends baseResponse {
@@ -30,7 +33,7 @@ export class AuthService extends baseResponse {
     private JwtService: JwtService,
     private mailService: MailService,
 
-    // @Inject(REQUEST) private readonly request: any,
+    @Inject(REQUEST) private readonly request: any,
   ) {
     super();
   }
@@ -53,8 +56,7 @@ export class AuthService extends baseResponse {
   
     payload.password = await hash(payload.password, 12);
     payload.verification_token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    payload.verification_token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const role = await this.roleRepository.findOne({ where: { name: 'user' } }); // cari role default
+    const role = await this.roleRepository.findOne({ where: { name: 'member' } }); // cari role default
     if (!role) {
       throw new HttpException('Default role not found', HttpStatus.INTERNAL_SERVER_ERROR);
     }
@@ -86,6 +88,7 @@ export class AuthService extends baseResponse {
   async verifyEmail(token: string): Promise<Responsesuccess> {
     const user = await this.userRepository.findOne({
       where: { verification_token: token },
+      relations: ['role'],
     });
 
     if (!user) {
@@ -126,6 +129,7 @@ export class AuthService extends baseResponse {
         id: id,
         refresh_token: token,
       },
+      relations: ['role'],
       select: {
         id: true,
         name: true,
@@ -142,6 +146,7 @@ export class AuthService extends baseResponse {
       id: user.id,
       nama: user.name,
       email: user.email,
+      role: user.role.name,
     };
 
     const access_token = this.generateJWT(
@@ -174,6 +179,7 @@ export class AuthService extends baseResponse {
   async login(payload: LoginDto): Promise<Responsesuccess> {
     const checklogin = await this.userRepository.findOne({
       where: { email: payload.email },
+      relations: ['role'],
       select: {
         id: true,
         name: true,
@@ -183,7 +189,11 @@ export class AuthService extends baseResponse {
       },
     });
 
-    if (!checklogin?.is_email_verified) {
+    if (!checklogin) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (checklogin.is_email_verified == false) {
       throw new UnauthorizedException('Email not verified');
     }
 
@@ -202,11 +212,12 @@ export class AuthService extends baseResponse {
       id: checklogin.id,
       nama: checklogin.name,
       email: checklogin.email,
+      role: checklogin.role.name,
     };
 
     const access_token = this.generateJWT(
       JwtPayload,
-      30,
+      '1d',
       process.env.ACCESS_TOKEN_SECRET || 'ACCESS_TOKEN_SECRET',
     );
 
@@ -262,6 +273,110 @@ export class AuthService extends baseResponse {
       success: true,
       message: 'Verification email resent successfully.',
       verification_token: user.verification_token,
+    });
+  }
+
+  async getProfile() {
+    const User = await this.userRepository.findOne({
+      where: { id: this.request.user.id },
+      relations: ['role'],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        is_email_verified: true,
+        verification_token_expiry: true,
+      },
+    })
+
+
+
+    if (!User) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (!User.is_email_verified) {
+      throw new ForbiddenException('Email belum diverifikasi');
+    }
+    return this._success('success', {
+      success: true,
+      message: 'Profile fetched successfully.',
+      User: {
+        id: User?.id,
+        name: User?.name,
+        email: User?.email,
+        role: User.role?.name,
+        is_email_verified: User?.is_email_verified,
+        verification_token_expiry: User?.verification_token_expiry,
+      }
+    });
+  }
+
+  async getProfileAdmin() {
+    const User = await this.userRepository.findOne({
+      where: { 
+        role: { name: 'admin' } },
+      relations: ['role'],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        is_email_verified: true,
+        verification_token_expiry: true,
+      },
+    })
+
+    if(User?.role?.name !== 'admin') {
+      throw new UnauthorizedException('tidak bisa akses');
+    }
+
+
+
+    if (!User.is_email_verified) {
+      throw new ForbiddenException('Email belum diverifikasi');
+    }
+    return this._success('success', {
+      success: true,
+      message: 'Profile fetched successfully.',
+      User: {
+        id: User?.id,
+        name: User?.name,
+        email: User?.email,
+        role: User.role?.name,
+        is_email_verified: User?.is_email_verified,
+        verification_token_expiry: User?.verification_token_expiry,
+      }
+    });
+  }
+
+  async getProfileMember() {
+    const User = await this.userRepository.findOne({
+      where: { 
+        role: { name: 'member' } },
+      relations: ['role'],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        is_email_verified: true,
+        verification_token_expiry: true,
+      },
+    })
+    
+    return this._success('success', {
+      success: true,
+      message: 'Profile fetched successfully.',
+      User: {
+        id: User?.id,
+        name: User?.name,
+        email: User?.email,
+        role: User?.role?.name,
+        is_email_verified: User?.is_email_verified,
+        verification_token_expiry: User?.verification_token_expiry,
+      }
     });
   }
 }

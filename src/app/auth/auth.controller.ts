@@ -1,14 +1,19 @@
 /* eslint-disable prettier/prettier */
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UserDto } from './auth.user.dto';
-import { JwtGuardRefreshToken } from './auth.guard';
+import { JwtGuard, JwtGuardRefreshToken } from './auth.guard';
 import { Responsesuccess } from '../interface/respon.interface';
+import { RolesGuard } from '../roles/roles.guard';
+import { Roles } from '../utils/decorator/roles.decorator';
+import { REQUEST } from '@nestjs/core';
 
 @Controller('auth')
 export class AuthController {
     constructor(
          private readonly authService: AuthService,
+             @Inject(REQUEST) private readonly request: any,
+         
     ) {}
     @Post('/register')
     async register(@Body() payload: UserDto) {
@@ -34,4 +39,25 @@ export class AuthController {
   async resendVerification(@Body('email') email: string): Promise<Responsesuccess> {
     return this.authService.resendVerification(email);
   }
+
+  @Get('profile')
+  @UseGuards(JwtGuard)
+  async getProfile() {
+    return this.authService.getProfile();
+  }
+
+  @Get('profile-Admin')
+  @UseGuards(JwtGuard, RolesGuard)
+  @Roles('admin')
+  async getProfileAdmin() {
+    return this.authService.getProfileAdmin();
+  }
+
+  @Get('profile/list/member')
+  @UseGuards(JwtGuard,RolesGuard)
+  @Roles('admin', 'user')
+  async getProfileMember() {
+    return this.authService.getProfileMember();
+  }
+
 }

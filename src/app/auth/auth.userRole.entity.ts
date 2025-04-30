@@ -1,6 +1,6 @@
 import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from './auth.users.entity';
-import { Role } from './auth.roles.entity';
+import { Role } from '../roles/auth.roles.entity';
 
 @Entity('user_roles')
 export class UserRole extends BaseEntity {

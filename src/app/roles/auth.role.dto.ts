@@ -5,6 +5,12 @@ export class CreateRoleDto {
   name: string;
 }
 
+export class FindRoleDto {
+  @IsString()
+  
+  name: string;
+}
+
 export class UpdateRoleDto {
   @IsString()
   @IsOptional()
