@@ -1,5 +1,5 @@
 interface jwtPayload {
-    id: number;
+    id: string;
     nama: string;
     email: string;
   }

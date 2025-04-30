@@ -9,10 +9,11 @@ import { JwtAccessTokenStrategy } from './jwtAccessToken.strategy';
 import { JwtRefreshTokenStrategy } from './jwtRefreshToken.strategy';
 import { JwtModule } from '@nestjs/jwt/dist/jwt.module';
 import { MailModule } from '../mail/mail.module';
+import { RoleService } from './role.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User, Role, UserRole]),JwtModule.register({}), MailModule],
   controllers: [AuthController],
-  providers: [AuthService,JwtAccessTokenStrategy,JwtRefreshTokenStrategy],
+  providers: [AuthService,RoleService,JwtAccessTokenStrategy,JwtRefreshTokenStrategy],
 })
 export class AuthModule {}

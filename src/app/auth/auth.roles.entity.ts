@@ -17,4 +17,5 @@ export class Role extends BaseEntity {
 
   @OneToMany(() => UserRole, (userRole) => userRole.role)
   userRoles: UserRole[];
+  users: any;
 }

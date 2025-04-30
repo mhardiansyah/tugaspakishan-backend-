@@ -1,5 +1,10 @@
 /* eslint-disable prettier/prettier */
-import { Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { User } from './auth.users.entity';
 import { Any, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -7,14 +12,18 @@ import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from './../../../node_modules/@types/jsonwebtoken/index.d';
 import baseResponse from '../utils/response.utils';
 import * as crypto from 'crypto';
-import { CreateUserDto } from './auth.user.dto';
 import { MailService } from '../mail/mail.service';
 import { Responsesuccess } from '../interface';
+import { LoginDto, UserDto } from './auth.user.dto';
+import { compare, hash } from 'bcrypt';
+import { use } from 'passport';
+import { Role } from './auth.roles.entity';
 
 @Injectable()
 export class AuthService extends baseResponse {
   constructor(
     @InjectRepository(User) private readonly userRepository: Repository<User>,
+    @InjectRepository(Role) private readonly roleRepository: Repository<Role>,
     // @InjectRepository(ResetPassword)
 
     // private readonly resetPasswordRepository: Repository<ResetPassword>,
@@ -31,51 +40,228 @@ export class AuthService extends baseResponse {
       expiresIn: expiresIn,
     });
   } //membuat method untuk generate jwt
-  async register(createUserDto: CreateUserDto): Promise<Responsesuccess> {
-    // Periksa apakah email sudah ada
+  async register(payload: UserDto): Promise<Responsesuccess> {
     const existingUser = await this.userRepository.findOne({
-      where: { email: createUserDto.email },
+      where: { email: payload.email },
     });
     if (existingUser) {
-      throw new Error('Email already exists'); // Atau gunakan HttpException untuk respons HTTP yang lebih baik
+      throw new HttpException(
+        'The email address is already registered.',
+        HttpStatus.CONFLICT,
+      );
     }
-
-    // Buat pengguna baru
-    const user = this.userRepository.create(createUserDto);
-    user.is_email_verified = false;
-    user.verification_token = crypto.randomBytes(32).toString('hex');
-    await this.userRepository.save(user);
-
-    // Kirim token verifikasi dalam respons
+  
+    payload.password = await hash(payload.password, 12);
+    payload.verification_token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    payload.verification_token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const role = await this.roleRepository.findOne({ where: { name: 'user' } }); // cari role default
+    if (!role) {
+      throw new HttpException('Default role not found', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  
+    const newUser = this.userRepository.create({
+      ...payload,
+      is_email_verified: false,
+      verification_token: crypto.randomBytes(32).toString('hex'),
+      role: role, // set sebagai objek, bukan string ID
+    });
+  
+    await this.userRepository.save(newUser);
+  
     return this._success('success', {
       success: true,
       message: 'User registered successfully. Please verify your email.',
-      verification_token: user.verification_token,
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: role.name,
+        is_email_verified: newUser.is_email_verified,
+        verification_token_expiry: newUser.verification_token_expiry,
+      },
+      verification_token: newUser.verification_token,
     });
   }
+
   async verifyEmail(token: string): Promise<Responsesuccess> {
-    const user = await this.userRepository.findOne({ where: { verification_token: token } });
-  
+    const user = await this.userRepository.findOne({
+      where: { verification_token: token },
+    });
+
     if (!user) {
-      throw new Error('Invalid or expired verification token');
+      throw new HttpException(
+        'Invalid or expired verification token',
+        HttpStatus.BAD_REQUEST,
+      );
     }
-  
+    if (new Date() > user.verification_token_expiry) {
+      throw new HttpException(
+        'Verification token has expired. Please request a new one.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     if (user.is_email_verified) {
       return this._success('success', {
         success: true,
         message: 'Email already verified.',
       });
     }
-  
+
     user.is_email_verified = true;
-    user.verification_token = String(null); // setelah verifikasi, token dihapus
+    user.verification_token = String(null); // Remove token after verification
+    
+
     await this.userRepository.save(user);
-  
+
     return this._success('success', {
       success: true,
       message: 'Email verified successfully.',
     });
   }
 
-  async login(payload: any) {}
+  async refreshToken(id: string, token: string): Promise<Responsesuccess> {
+    const user = await this.userRepository.findOne({
+      where: {
+        id: id,
+        refresh_token: token,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        refresh_token: true,
+      },
+    });
+    if (user === null) {
+      throw new UnauthorizedException();
+    }
+
+    const JwtPayload: jwtPayload = {
+      id: user.id,
+      nama: user.name,
+      email: user.email,
+    };
+
+    const access_token = this.generateJWT(
+      JwtPayload,
+      30,
+      process.env.ACCESS_TOKEN_SECRET || 'ACCESS_TOKEN_SECRET',
+    );
+
+    const refresh_token = this.generateJWT(
+      JwtPayload,
+      '1d',
+      process.env.REFRESH_TOKEN_SECRET || 'REFRESH_TOKEN_SECRET',
+    );
+    await this.userRepository.update(
+      {
+        id: id,
+      },
+      {
+        refresh_token: refresh_token,
+      },
+    );
+
+    return this._success('success', {
+      ...user,
+      access_token: access_token,
+      refresh_token: refresh_token,
+    });
+  }
+
+  async login(payload: LoginDto): Promise<Responsesuccess> {
+    const checklogin = await this.userRepository.findOne({
+      where: { email: payload.email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        refresh_token: true,
+      },
+    });
+
+    if (!checklogin?.is_email_verified) {
+      throw new UnauthorizedException('Email not verified');
+    }
+
+    console.log('User Found:', checklogin);
+
+    const checkpassword = await compare(payload.password, checklogin.password);
+    console.log('Plain Password:', payload.password);
+    console.log('Hashed Password:', checklogin.password);
+    console.log('Password Match:', checkpassword);
+
+    if (!checkpassword) {
+      throw new UnauthorizedException('Invalid password');
+    }
+
+    const JwtPayload: jwtPayload = {
+      id: checklogin.id,
+      nama: checklogin.name,
+      email: checklogin.email,
+    };
+
+    const access_token = this.generateJWT(
+      JwtPayload,
+      30,
+      process.env.ACCESS_TOKEN_SECRET || 'ACCESS_TOKEN_SECRET',
+    );
+
+    const refresh_token = this.generateJWT(
+      JwtPayload,
+      '1d',
+      process.env.REFRESH_TOKEN_SECRET || 'REFRESH_TOKEN_SECRET',
+    );
+
+    await this.userRepository.update(
+      {
+        id: checklogin.id,
+      },
+      {
+        refresh_token: refresh_token,
+      },
+    );
+
+    return this._success('success', {
+      ...checklogin,
+      access_token: access_token,
+      refresh_token: refresh_token,
+    });
+  }
+
+  async resendVerification(email: string): Promise<Responsesuccess> {
+    const user = await this.userRepository.findOne({
+      where: { email: email },
+    });
+
+    if (!user) {
+      throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    }
+
+    if (user.is_email_verified) {
+      return this._success('success', {
+        success: true,
+        message: 'Email is already verified.',
+      });
+    }
+
+    // Generate a new verification token
+    user.verification_token = crypto.randomBytes(32).toString('hex');
+    await this.userRepository.save(user);
+
+    // Send verification email
+    // await this.mailService.sendVerificationEmail(
+    //   user.email,
+    //   user.verification_token,
+    // );
+
+    return this._success('success', {
+      success: true,
+      message: 'Verification email resent successfully.',
+      verification_token: user.verification_token,
+    });
+  }
 }
