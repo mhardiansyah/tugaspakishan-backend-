@@ -63,7 +63,7 @@ export class AuthService extends baseResponse {
       Date.now() + 24 * 60 * 60 * 1000,
     );
     const role = await this.roleRepository.findOne({
-      where: { name: 'member' },
+      where: { name: 'user' },
     }); // cari role default
     if (!role) {
       throw new HttpException(
@@ -75,7 +75,7 @@ export class AuthService extends baseResponse {
     const newUser = this.userRepository.create({
       ...payload,
       is_email_verified: false,
-      verification_token: crypto.randomBytes(32).toString('hex'),
+      verification_token: Math.floor(100000 + Math.random() * 900000).toString(),
       role: role, // set sebagai objek, bukan string ID
     });
 
@@ -215,10 +215,9 @@ export class AuthService extends baseResponse {
     }
 
     // Step 2: Check if email is verified
-    if (checklogin.is_email_verified === false) {
-      throw new UnauthorizedException('Email not verified');
+    if (!checklogin.is_email_verified && checklogin.is_email_verified === false) {
+      throw new UnauthorizedException('Email has not been verified. Please verify your email to proceed.');
     }
-
     console.log('User Found:', checklogin);
 
     // Step 3: Compare the entered password with the stored hashed password
@@ -270,6 +269,7 @@ export class AuthService extends baseResponse {
       refresh_token: refresh_token,
     });
   }
+
 
   async resendVerification(email: string): Promise<Responsesuccess> {
     const user = await this.userRepository.findOne({
