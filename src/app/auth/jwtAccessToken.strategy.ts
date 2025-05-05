@@ -18,6 +18,6 @@ export class JwtAccessTokenStrategy extends PassportStrategy(
 
   async validate(payload: any) {
     console.log('payload',payload);
-    return payload;
+    return { id: payload.id, email: payload.email, roles: payload.role };
   }
 }

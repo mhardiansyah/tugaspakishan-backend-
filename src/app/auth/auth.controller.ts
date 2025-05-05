@@ -46,16 +46,16 @@ export class AuthController {
     return this.authService.getProfile();
   }
 
-  @Get('profile-Admin')
   @UseGuards(JwtGuard, RolesGuard)
   @Roles('admin')
+  @Get('profile-Admin')
   async getProfileAdmin() {
     return this.authService.getProfileAdmin();
   }
 
-  @Get('profile/list/member')
   @UseGuards(JwtGuard,RolesGuard)
   @Roles('admin', 'user')
+  @Get('profile/list/member')
   async getProfileMember() {
     return this.authService.getProfileMember();
   }

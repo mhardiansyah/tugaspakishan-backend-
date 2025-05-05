@@ -19,14 +19,17 @@ import { Responsesuccess } from '../interface';
 import { LoginDto, UserDto } from './auth.user.dto';
 import { compare, hash } from 'bcrypt';
 import { use } from 'passport';
-import { Role } from '../roles/auth.roles.entity';
 import { REQUEST } from '@nestjs/core';
+import { UserRole } from './auth.userRole.entity';
+import { Role } from './../roles/auth.roles.entity';
 
 @Injectable()
 export class AuthService extends baseResponse {
   constructor(
     @InjectRepository(User) private readonly userRepository: Repository<User>,
     @InjectRepository(Role) private readonly roleRepository: Repository<Role>,
+    @InjectRepository(UserRole)
+    private readonly userRoleRepository: Repository<UserRole>,
     // @InjectRepository(ResetPassword)
 
     // private readonly resetPasswordRepository: Repository<ResetPassword>,
@@ -47,29 +50,45 @@ export class AuthService extends baseResponse {
     const existingUser = await this.userRepository.findOne({
       where: { email: payload.email },
     });
+
     if (existingUser) {
       throw new HttpException(
         'The email address is already registered.',
         HttpStatus.CONFLICT,
       );
     }
-  
+
     payload.password = await hash(payload.password, 12);
-    payload.verification_token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const role = await this.roleRepository.findOne({ where: { name: 'member' } }); // cari role default
+    payload.verification_token_expiry = new Date(
+      Date.now() + 24 * 60 * 60 * 1000,
+    );
+    const role = await this.roleRepository.findOne({
+      where: { name: 'member' },
+    }); // cari role default
     if (!role) {
-      throw new HttpException('Default role not found', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        'Default role not found',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
-  
+
     const newUser = this.userRepository.create({
       ...payload,
       is_email_verified: false,
       verification_token: crypto.randomBytes(32).toString('hex'),
       role: role, // set sebagai objek, bukan string ID
     });
-  
+
     await this.userRepository.save(newUser);
-  
+
+    // Simpan ke user_roles
+    const userRole = this.userRoleRepository.create({
+      user_id: newUser.id,
+      role_id: role.id,
+    });
+
+    await this.userRoleRepository.save(userRole);
+
     return this._success('success', {
       success: true,
       message: 'User registered successfully. Please verify your email.',
@@ -113,7 +132,6 @@ export class AuthService extends baseResponse {
 
     user.is_email_verified = true;
     user.verification_token = String(null); // Remove token after verification
-    
 
     await this.userRepository.save(user);
 
@@ -142,7 +160,7 @@ export class AuthService extends baseResponse {
       throw new UnauthorizedException();
     }
 
-    const JwtPayload: jwtPayload = {
+    const JwtPayload: JwtPayload = {
       id: user.id,
       nama: user.name,
       email: user.email,
@@ -176,10 +194,13 @@ export class AuthService extends baseResponse {
     });
   }
 
+  ////
+
   async login(payload: LoginDto): Promise<Responsesuccess> {
+    // Step 1: Check if the user exists in the database
     const checklogin = await this.userRepository.findOne({
       where: { email: payload.email },
-      relations: ['role'],
+      relations: ['userRoles', 'userRoles.role'], // Ambil relasi userRoles dan role
       select: {
         id: true,
         name: true,
@@ -190,15 +211,17 @@ export class AuthService extends baseResponse {
     });
 
     if (!checklogin) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException('Invalid email or password');
     }
 
-    if (checklogin.is_email_verified == false) {
+    // Step 2: Check if email is verified
+    if (checklogin.is_email_verified === false) {
       throw new UnauthorizedException('Email not verified');
     }
 
     console.log('User Found:', checklogin);
 
+    // Step 3: Compare the entered password with the stored hashed password
     const checkpassword = await compare(payload.password, checklogin.password);
     console.log('Plain Password:', payload.password);
     console.log('Hashed Password:', checklogin.password);
@@ -208,13 +231,17 @@ export class AuthService extends baseResponse {
       throw new UnauthorizedException('Invalid password');
     }
 
-    const JwtPayload: jwtPayload = {
+    // Step 4: Prepare the JWT Payload
+    const JwtPayload: JwtPayload = {
       id: checklogin.id,
       nama: checklogin.name,
       email: checklogin.email,
-      role: checklogin.role.name,
+      // role: checklogin.userRoles.map((Role) => Role.role.name),
+      role: checklogin.role.name
+      
     };
 
+    // Step 5: Generate access token and refresh token
     const access_token = this.generateJWT(
       JwtPayload,
       '1d',
@@ -227,17 +254,18 @@ export class AuthService extends baseResponse {
       process.env.REFRESH_TOKEN_SECRET || 'REFRESH_TOKEN_SECRET',
     );
 
+    // Step 6: Update the user with the new refresh token
     await this.userRepository.update(
-      {
-        id: checklogin.id,
-      },
-      {
-        refresh_token: refresh_token,
-      },
+      { id: checklogin.id },
+      { refresh_token: refresh_token },
     );
 
+    // Step 7: Return the success response with the generated tokens
     return this._success('success', {
-      ...checklogin,
+      id: checklogin.id,
+      name: checklogin.name,
+      email: checklogin.email,
+      roles: JwtPayload.role, // Sertakan roles di response
       access_token: access_token,
       refresh_token: refresh_token,
     });
@@ -288,9 +316,7 @@ export class AuthService extends baseResponse {
         is_email_verified: true,
         verification_token_expiry: true,
       },
-    })
-
-
+    });
 
     if (!User) {
       throw new UnauthorizedException('User not found');
@@ -309,14 +335,15 @@ export class AuthService extends baseResponse {
         role: User.role?.name,
         is_email_verified: User?.is_email_verified,
         verification_token_expiry: User?.verification_token_expiry,
-      }
+      },
     });
   }
 
   async getProfileAdmin() {
     const User = await this.userRepository.findOne({
-      where: { 
-        role: { name: 'admin' } },
+      where: {
+        role: { name: 'admin' },
+      },
       relations: ['role'],
       select: {
         id: true,
@@ -324,17 +351,10 @@ export class AuthService extends baseResponse {
         email: true,
         role: true,
         is_email_verified: true,
-        verification_token_expiry: true,
       },
-    })
+    });
 
-    if(User?.role?.name !== 'admin') {
-      throw new UnauthorizedException('tidak bisa akses');
-    }
-
-
-
-    if (!User.is_email_verified) {
+    if (!User?.is_email_verified) {
       throw new ForbiddenException('Email belum diverifikasi');
     }
     return this._success('success', {
@@ -347,36 +367,29 @@ export class AuthService extends baseResponse {
         role: User.role?.name,
         is_email_verified: User?.is_email_verified,
         verification_token_expiry: User?.verification_token_expiry,
-      }
+      },
     });
   }
 
   async getProfileMember() {
-    const User = await this.userRepository.findOne({
-      where: { 
-        role: { name: 'member' } },
-      relations: ['role'],
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        is_email_verified: true,
-        verification_token_expiry: true,
+    const userRoles = await this.userRoleRepository.find({
+      where: {
+        role: { name: 'member' },
       },
-    })
-    
+      relations: ['user', 'role'],
+    });
+
+    const members = userRoles.map((ur) => ({
+      id: ur.user.id,
+      name: ur.user.name,
+      email: ur.user.email,
+      role: ur.role.name,
+    }));
+
     return this._success('success', {
       success: true,
-      message: 'Profile fetched successfully.',
-      User: {
-        id: User?.id,
-        name: User?.name,
-        email: User?.email,
-        role: User?.role?.name,
-        is_email_verified: User?.is_email_verified,
-        verification_token_expiry: User?.verification_token_expiry,
-      }
+      message: 'Daftar member berhasil diambil.',
+      Members: members,
     });
   }
 }

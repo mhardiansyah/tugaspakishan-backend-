@@ -53,6 +53,6 @@ export class User extends BaseEntity {
   @UpdateDateColumn()
   updated_at: Date;
 
-  @OneToMany(() => UserRole, (userRole) => userRole.user)
+  @OneToMany(() => UserRole, (userRole) => userRole.user, { eager: true })
   userRoles: UserRole[];
 }

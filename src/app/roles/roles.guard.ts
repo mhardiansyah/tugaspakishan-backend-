@@ -1,12 +1,13 @@
 import {
-    CanActivate,
-    ExecutionContext,
-    Injectable,
-    ForbiddenException,
-  } from '@nestjs/common';
-  import { Reflector } from '@nestjs/core';
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  ForbiddenException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../utils/decorator/roles.decorator';
-  
+import { Role } from './auth.roles.entity';
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
@@ -18,13 +19,23 @@ export class RolesGuard implements CanActivate {
     ]);
 
     if (!requiredRoles || requiredRoles.length === 0) {
-      return true; // jika tidak ada roles yang dibutuhkan, akses diberikan
+      return true; // Jika tidak ada roles yang dibutuhkan, akses diberikan
     }
 
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user || !requiredRoles.includes(user.role?.name)) {
+    console.log('ROLE GUARD USER:', user);
+    console.log('Required Roles:', requiredRoles);
+
+    // Periksa apakah user.roles adalah array atau string
+    if (!user || !user.roles) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.roles]; // Pastikan roles selalu berupa array
+
+    if (!userRoles.some((role) => requiredRoles.includes(role))) {
       throw new ForbiddenException('Access denied');
     }
 

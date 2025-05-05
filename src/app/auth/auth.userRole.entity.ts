@@ -23,5 +23,4 @@ export class UserRole extends BaseEntity {
   @ManyToOne(() => Role, (role) => role.userRoles, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'role_id' })
   role: Role;
-  static user: any;
 }
