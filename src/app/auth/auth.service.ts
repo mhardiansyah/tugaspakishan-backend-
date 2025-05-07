@@ -22,6 +22,7 @@ import { use } from 'passport';
 import { REQUEST } from '@nestjs/core';
 import { UserRole } from './auth.userRole.entity';
 import { Role } from './../roles/auth.roles.entity';
+import { IsEmail } from 'class-validator';
 
 @Injectable()
 export class AuthService extends baseResponse {
@@ -75,7 +76,9 @@ export class AuthService extends baseResponse {
     const newUser = this.userRepository.create({
       ...payload,
       is_email_verified: false,
-      verification_token: Math.floor(100000 + Math.random() * 900000).toString(),
+      verification_token: Math.floor(
+        100000 + Math.random() * 900000,
+      ).toString(),
       role: role, // set sebagai objek, bukan string ID
     });
 
@@ -88,6 +91,13 @@ export class AuthService extends baseResponse {
     });
 
     await this.userRoleRepository.save(userRole);
+
+    // Kirim email verifikasi
+    // await this.mailService.sendVerificationEmail({
+    //   name: newUser.name,
+    //   email: newUser.email,
+    //   verification_token: newUser.verification_token,
+    // });
 
     return this._success('success', {
       success: true,
@@ -215,8 +225,13 @@ export class AuthService extends baseResponse {
     }
 
     // Step 2: Check if email is verified
-    if (!checklogin.is_email_verified && checklogin.is_email_verified === false) {
-      throw new UnauthorizedException('Email has not been verified. Please verify your email to proceed.');
+    if (
+      !checklogin.is_email_verified &&
+      checklogin.is_email_verified === false
+    ) {
+      throw new UnauthorizedException(
+        'Email has not been verified. Please verify your email to proceed.',
+      );
     }
     console.log('User Found:', checklogin);
 
@@ -236,8 +251,7 @@ export class AuthService extends baseResponse {
       nama: checklogin.name,
       email: checklogin.email,
       // role: checklogin.userRoles.map((Role) => Role.role.name),
-      role: checklogin.role.name
-      
+      role: checklogin.role.name,
     };
 
     // Step 5: Generate access token and refresh token
@@ -270,7 +284,6 @@ export class AuthService extends baseResponse {
     });
   }
 
-
   async resendVerification(email: string): Promise<Responsesuccess> {
     const user = await this.userRepository.findOne({
       where: { email: email },
@@ -292,10 +305,11 @@ export class AuthService extends baseResponse {
     await this.userRepository.save(user);
 
     // Send verification email
-    // await this.mailService.sendVerificationEmail(
-    //   user.email,
-    //   user.verification_token,
-    // );
+    await this.mailService.sendVerificationEmail({
+      name: user.name,
+      email: user.email,
+      verification_token: user.verification_token,
+    });
 
     return this._success('success', {
       success: true,

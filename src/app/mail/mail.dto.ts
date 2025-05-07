@@ -1,5 +1,5 @@
-export class MailResetPasswordDto {
-    link: string;
-    name: string;
-    email: string;
+export class MailPasswordDto {
+  name: string;
+  email: string;
+  verification_token: string;
 }

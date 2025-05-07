@@ -22,7 +22,7 @@ import { join } from 'path';
         from: '"latihan-kirim-email@smkmadinatulquran.sch.id>',
       },
       template: {
-        dir: join(__dirname, 'templates'),  // template akan di ambil dari handlebar yang ada pada folder templates
+        dir: join(__dirname, 'src', 'mail', 'templates'),  // template akan di ambil dari handlebar yang ada pada folder templates
         adapter: new HandlebarsAdapter(),
         options: {
           strict: true,
