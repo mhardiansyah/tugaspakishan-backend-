@@ -9,20 +9,22 @@ import { join } from 'path';
   imports: [
     MailerModule.forRoot({
       transport: {
-        host: process.env.MAIL_HOST ||'mail.smkmadinatulquran.sch.id', //sesuaikan konfigurasi 
-        port: Number(process.env.MAIL_PORT) || 465,
-        connectionTimeout: 10000,
+        host: process.env.MAIL_HOST || process.env.SECRET_KEY  ||'mail.smkmadinatulquran.sch.id', //sesuaikan konfigurasi 
+        port: Number(process.env.MAIL_PORT) || 465 || 587,
+        connectionTimeout: 20000,
         secure: true,
+        logger: true,
+        debug: true,
         auth: {
-          user: process.env.MAIL_USER ||  'latihan-kirim-email@smkmadinatulquran.sch.id',  //sesuaikan user
-          pass: process.env.MAIL_PASS || 'SMKMQ2024', //sesuaikan password 
+          user: process.env.MAIL_USER  || process.env.EMAIL_USER  || 'latihan-kirim-email@smkmadinatulquran.sch.id',  //sesuaikan user
+          pass: process.env.MAIL_PASS ||  process.env.EMAIL_PASS  ||'SMKMQ2024', //sesuaikan password 
         },
       },
       defaults: {
         from: '"latihan-kirim-email@smkmadinatulquran.sch.id>',
       },
       template: {
-        dir: join(__dirname, 'src', 'mail', 'templates'),  // template akan di ambil dari handlebar yang ada pada folder templates
+        dir: join(__dirname,'templates'),  // template akan di ambil dari handlebar yang ada pada folder templates
         adapter: new HandlebarsAdapter(),
         options: {
           strict: true,

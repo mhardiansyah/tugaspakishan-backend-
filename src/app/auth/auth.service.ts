@@ -93,11 +93,11 @@ export class AuthService extends baseResponse {
     await this.userRoleRepository.save(userRole);
 
     // Kirim email verifikasi
-    // await this.mailService.sendVerificationEmail({
-    //   name: newUser.name,
-    //   email: newUser.email,
-    //   verification_token: newUser.verification_token,
-    // });
+    await this.mailService.sendVerificationEmail({
+      name: newUser.name,
+      email: newUser.email,
+      verification_token: newUser.verification_token,
+    });
 
     return this._success('success', {
       success: true,
@@ -354,7 +354,7 @@ export class AuthService extends baseResponse {
   }
 
   async getProfileAdmin() {
-    const User = await this.userRepository.findOne({
+    const data = await this.userRepository.find({
       where: {
         role: { name: 'admin' },
       },
@@ -365,23 +365,32 @@ export class AuthService extends baseResponse {
         email: true,
         role: true,
         is_email_verified: true,
+        verification_token_expiry: true,
       },
     });
 
-    if (!User?.is_email_verified) {
-      throw new ForbiddenException('Email belum diverifikasi');
+    if (data.length === 0) {
+      throw new ForbiddenException('Tidak ada admin yang ditemukan');
     }
+
+    const unverifieddata = data.filter(data => !data.is_email_verified);
+    if (unverifieddata.length > 0) {
+      throw new ForbiddenException('Beberapa admin belum memverifikasi email mereka');
+    }
+
+    const dataProfiles = data.map(data => ({
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      role: data.role?.name,
+      is_email_verified: data.is_email_verified,
+      verification_token_expiry: data.verification_token_expiry,
+    }));
+
     return this._success('success', {
       success: true,
-      message: 'Profile fetched successfully.',
-      User: {
-        id: User?.id,
-        name: User?.name,
-        email: User?.email,
-        role: User.role?.name,
-        is_email_verified: User?.is_email_verified,
-        verification_token_expiry: User?.verification_token_expiry,
-      },
+      message: 'Profiles fetched successfully.',
+      data: dataProfiles,
     });
   }
 
@@ -403,7 +412,7 @@ export class AuthService extends baseResponse {
     return this._success('success', {
       success: true,
       message: 'Daftar member berhasil diambil.',
-      Members: members,
+      data: members,
     });
   }
 }
